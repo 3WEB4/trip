@@ -12,3 +12,6 @@ tests/fixtures/**/raw-*.json
 
 # Deployment-specific market settings (Chrome endpoints, proxies).
 markets.local.json
+
+# Written by `npm run chrome`: the CDP endpoints it started.
+.trip-chrome.json

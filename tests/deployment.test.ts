@@ -1,5 +1,5 @@
 import { join } from 'node:path';
-import { mkdtempSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { afterAll, afterEach, describe, expect, it } from 'vitest';
 import { buildServer } from '../src/api/server.js';
@@ -9,7 +9,7 @@ import { formatReport, type DoctorReport } from '../src/doctor.js';
 
 const FIXTURES = join(import.meta.dirname, 'fixtures', 'tokyo-2848471');
 
-afterEach(() => reloadOverrides({}));
+afterEach(() => reloadOverrides({ TRIP_SKIP_LAUNCHER_FILE: '1' } as NodeJS.ProcessEnv));
 
 describe('market overrides', () => {
   it('reads per-market Chrome, proxy and country from the environment', () => {
@@ -19,6 +19,7 @@ describe('market overrides', () => {
       TRIP_MARKET_NL_PROXY: 'http://user:secret@nl-exit.example:8000',
       TRIP_MARKET_NL_COUNTRY: 'nl',
       UNRELATED: 'x',
+      TRIP_SKIP_LAUNCHER_FILE: '1',
     } as NodeJS.ProcessEnv);
 
     expect(overrides).toEqual({
@@ -36,6 +37,7 @@ describe('market overrides', () => {
     const overrides = loadOverrides({
       TRIP_MARKETS_FILE: file,
       TRIP_MARKET_JP_CDP: 'http://env:9999',
+      TRIP_SKIP_LAUNCHER_FILE: '1',
     } as NodeJS.ProcessEnv);
 
     expect(overrides.JP).toEqual({ cdpUrl: 'http://env:9999', proxy: 'http://file-proxy:8000' });
@@ -45,6 +47,7 @@ describe('market overrides', () => {
     reloadOverrides({
       TRIP_MARKET_NL_CDP: 'http://127.0.0.1:9223',
       TRIP_MARKET_NL_COUNTRY: 'nl',
+      TRIP_SKIP_LAUNCHER_FILE: '1',
     } as NodeJS.ProcessEnv);
 
     const nl = getMarket('NL');
@@ -59,6 +62,26 @@ describe('market overrides', () => {
     expect(describeProxy('http://user:secret@nl-exit.example:8000')).toBe('http://nl-exit.example:8000');
     expect(describeProxy(undefined)).toBeNull();
     expect(describeProxy('not a url')).toBe('(unparsable proxy)');
+  });
+
+  it('picks up the endpoints the launcher recorded, and lets env override them', () => {
+    const launcherFile = join(import.meta.dirname, '..', '.trip-chrome.json');
+    writeFileSync(launcherFile, JSON.stringify({ JP: { cdpUrl: 'http://127.0.0.1:9222' }, NL: { cdpUrl: 'http://127.0.0.1:9223' } }));
+
+    try {
+      // No environment at all: the launcher's file alone must wire the markets
+      // up, since forgetting to export used to point every market at one Chrome.
+      expect(loadOverrides({} as NodeJS.ProcessEnv)).toEqual({
+        JP: { cdpUrl: 'http://127.0.0.1:9222' },
+        NL: { cdpUrl: 'http://127.0.0.1:9223' },
+      });
+
+      const overridden = loadOverrides({ TRIP_MARKET_NL_CDP: 'http://elsewhere:9999' } as NodeJS.ProcessEnv);
+      expect(overridden.NL?.cdpUrl).toBe('http://elsewhere:9999');
+      expect(overridden.JP?.cdpUrl).toBe('http://127.0.0.1:9222');
+    } finally {
+      rmSync(launcherFile, { force: true });
+    }
   });
 
   it('leaves a market untouched when there is no override', () => {

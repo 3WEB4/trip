@@ -18,9 +18,19 @@
  */
 
 import { spawn } from 'node:child_process';
-import { existsSync, mkdirSync } from 'node:fs';
+import { existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+/**
+ * Where the started endpoints are recorded, so `npm run share`, the API and
+ * the doctor pick them up without the operator exporting anything by hand.
+ * Forgetting to export them used to be silent and wrong: every market would
+ * quietly share one Chrome.
+ */
+const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
+const ENDPOINTS_FILE = join(ROOT, '.trip-chrome.json');
 
 const CHROME_CANDIDATES = [
   process.env.CHROME_PATH,
@@ -81,6 +91,7 @@ if (!binary) {
 
 const children = [];
 const envLines = [];
+const endpoints = {};
 
 args.markets.forEach((market, index) => {
   const port = args.basePort + index;
@@ -102,7 +113,10 @@ args.markets.forEach((market, index) => {
 
   console.log(`[${market}] port ${port}  profile ${profile}${proxy ? `  proxy ${safeProxy(proxy)}` : '  (no proxy — local IP)'}`);
   envLines.push(`TRIP_MARKET_${market}_CDP=http://127.0.0.1:${port}`);
+  endpoints[market] = { cdpUrl: `http://127.0.0.1:${port}` };
 });
+
+writeFileSync(ENDPOINTS_FILE, `${JSON.stringify(endpoints, null, 2)}\n`, 'utf8');
 
 console.log(
   [
@@ -110,16 +124,21 @@ console.log(
     'Chrome を各市場ぶん起動しました。ウィンドウは開いたままにしてください。',
     'それぞれで一度 trip.com を開き、通常の閲覧状態にしておくと安定します。',
     '',
-    '別のターミナルで次を設定してから実行してください:',
-    '',
-    ...envLines.map((line) => `  export ${line}`),
+    `接続先を ${ENDPOINTS_FILE} に記録しました。`,
+    '別のターミナルで、そのまま次を実行できます:',
     '',
     '  npm run doctor -- --markets ' + args.markets.join(','),
+    '  npm run share',
+    '',
+    '（環境変数で上書きしたい場合は次を export してください）',
+    ...envLines.map((line) => `  export ${line}`),
     '',
   ].join('\n'),
 );
 
 const shutdown = () => {
+  // The endpoints stop being true once these Chromes are gone.
+  rmSync(ENDPOINTS_FILE, { force: true });
   for (const child of children) child.kill();
   process.exit(0);
 };

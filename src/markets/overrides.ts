@@ -19,8 +19,17 @@
  * Proxy credentials are never logged; only the host is ever printed.
  */
 
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import type { MarketCode, MarketConfig } from '../types.js';
+
+/**
+ * Written by `npm run chrome`, listing the CDP endpoint it started for each
+ * market. Picked up automatically so the operator does not have to export
+ * anything — forgetting to would silently point every market at one Chrome.
+ */
+const LAUNCHER_ENDPOINTS_FILE = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '.trip-chrome.json');
 
 export interface MarketOverride {
   cdpUrl?: string;
@@ -59,13 +68,22 @@ function fromEnv(env: NodeJS.ProcessEnv): Record<string, MarketOverride> {
   return out;
 }
 
-/** Env wins over the file, so a single variable can override a deployment file. */
+/**
+ * Precedence, lowest first: endpoints recorded by the launcher, then
+ * `TRIP_MARKETS_FILE`, then individual environment variables.
+ */
 export function loadOverrides(env: NodeJS.ProcessEnv = process.env): Record<string, MarketOverride> {
+  const launched = env.TRIP_SKIP_LAUNCHER_FILE === '1' || !existsSync(LAUNCHER_ENDPOINTS_FILE)
+    ? {}
+    : fromFile(LAUNCHER_ENDPOINTS_FILE);
   const file = env.TRIP_MARKETS_FILE ? fromFile(env.TRIP_MARKETS_FILE) : {};
   const environment = fromEnv(env);
-  const merged: Record<string, MarketOverride> = { ...file };
-  for (const [code, override] of Object.entries(environment)) {
-    merged[code] = { ...merged[code], ...override };
+
+  const merged: Record<string, MarketOverride> = { ...launched };
+  for (const source of [file, environment]) {
+    for (const [code, override] of Object.entries(source)) {
+      merged[code] = { ...merged[code], ...override };
+    }
   }
   return merged;
 }

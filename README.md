@@ -110,15 +110,16 @@ npm run cli -- "https://www.trip.com/hotels/detail/?hotelId=2848471&roomId=15996
 #    プロキシを使う場合は先に TRIP_MARKET_<CODE>_PROXY を設定しておく
 npm run chrome -- --markets JP,NL
 
-# 2. 起動時に表示された環境変数を設定し、準備できているか確認する
-export TRIP_MARKET_JP_CDP=http://127.0.0.1:9222
-export TRIP_MARKET_NL_CDP=http://127.0.0.1:9223
+# 2. 別のターミナルで、準備できているか確認する
 npm run doctor -- --markets JP,NL --hotel 2848471
 
 # 3. 比較を実行
 npm run cli -- "<Trip.comのURL>" --markets JP,NL --pretty
 npm run api                                   # 画面から使う場合
+npm run share                                 # 公開URLで使う場合
 ```
+
+`npm run chrome` は起動した接続先を `.trip-chrome.json` に記録し、doctor・API・CLI がそれを自動で読む。環境変数を export する必要はない（export した場合はそちらが優先される）。**この受け渡しがないと全市場が同じChromeに繋がり、しかも一見成功してしまう**ため、自動化してある。Chromeを終了するとファイルも消える。
 
 `npm run doctor` は市場ごとに「Chromeに接続できるか」「どの国のIPから出ているか」「Trip.comが料金を返すか」を確認して、次のように表示する。**失敗の原因が実行前に分かる**ようにするためのコマンド。
 
@@ -210,10 +211,11 @@ curl localhost:3000/api/jobs/<id>
 | `ALLOW_CLIENT_FIXTURES` | `1` でリクエストの `fixturesDir` を許可。**公開サーバーでは有効にしないこと**（任意ディレクトリを読ませる指定になる） |
 | `API_TOKEN` | 設定すると `/api/*` に `Authorization: Bearer <token>` を要求。画面は `?token=<値>` で一度開けば以降も動く |
 | `CHROME_CDP_URL` | 既定のChrome DevToolsエンドポイント（既定 `http://127.0.0.1:9222`） |
-| `TRIP_MARKET_<CODE>_CDP` | その市場専用のChrome |
+| `TRIP_MARKET_<CODE>_CDP` | その市場専用のChrome（`.trip-chrome.json` より優先） |
 | `TRIP_MARKET_<CODE>_PROXY` | その市場のChromeに渡す `--proxy-server` |
 | `TRIP_MARKET_<CODE>_COUNTRY` | 期待する出口IPの国。doctor が照合する |
 | `TRIP_MARKETS_FILE` | 上記をまとめたJSONファイル（環境変数の方が優先） |
+| `TRIP_SKIP_LAUNCHER_FILE` | `1` で `.trip-chrome.json` を無視する |
 | `SAVE_CAPTURES` | 生レスポンスの保存先ディレクトリ |
 | `IP_LOOKUP_URL` | 出口IP確認先（既定 `https://ipinfo.io/json`） |
 | `PORT` | `npm run share` でも使われる（既定 3000） |
@@ -275,7 +277,7 @@ Trip.com の仕様変更に備え、**生ペイロードを知っているのは
 ## 開発
 
 ```bash
-npm test          # vitest（71件）
+npm test          # vitest（72件）
 npm run typecheck
 npm run build
 ```
