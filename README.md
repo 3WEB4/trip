@@ -39,6 +39,36 @@ hostname -I                   # Linux
 
 iOS / Android とも、ブラウザの「ホーム画面に追加」でアプリのように起動できます。
 
+### インターネット公開して試す
+
+`npm run share` で、ローカルのサーバーとCloudflare Tunnelをまとめて起動し、外から開けるURLを表示します。ルーターのポート開放は不要です。
+
+```bash
+# まず動かしてみる（Chrome不要、サンプルデータ）
+npm run share -- --demo
+
+# 実データで公開する（各市場のChromeを起動したまま）
+npm run chrome -- --markets JP,NL     # 別ターミナル
+npm run share
+```
+
+```
+────────────────────────────────────────────────────────────
+  スマホやPCのブラウザで、このURLを開いてください:
+
+  https://xxxx-yyyy-zzzz.trycloudflare.com/?token=8f3a...
+
+  ※ アクセストークンを自動生成しました。このURLを知っている人だけが使えます。
+  終了するには Ctrl+C を押してください（URLは無効になります）。
+────────────────────────────────────────────────────────────
+```
+
+公開URLは誰でも叩ける状態になり、1回の比較はこちらの実ブラウザと実IPを消費するため、**アクセストークンを自動生成して必ず付ける**。自分で決めた値を使う場合は `API_TOKEN` を設定してから実行する。トークンはURLに含まれ、一度開けばその端末に保存される。
+
+事前に `cloudflared` が必要（`brew install cloudflared` / `winget install --id Cloudflare.cloudflared`）。未インストールの場合は導入方法を表示して終了する。
+
+固定ドメインで公開したい場合や、Cloudflare Access でログイン画面を前に置きたい場合は、`cloudflared tunnel login` で名前付きトンネルを作り、`http://127.0.0.1:3000` に向ける。なお **Cloudflare Pages / Workers ではこのツールは動かない**（実Chromeを常駐させる必要があるため）。Cloudflare はあくまで手元のマシンへの入口として使う。
+
 ## CLI
 
 ```bash
@@ -186,6 +216,7 @@ curl localhost:3000/api/jobs/<id>
 | `TRIP_MARKETS_FILE` | 上記をまとめたJSONファイル（環境変数の方が優先） |
 | `SAVE_CAPTURES` | 生レスポンスの保存先ディレクトリ |
 | `IP_LOOKUP_URL` | 出口IP確認先（既定 `https://ipinfo.io/json`） |
+| `PORT` | `npm run share` でも使われる（既定 3000） |
 | `LOG_LEVEL` | `debug` / `info` / `warn` / `error` |
 
 **公開する場合は `API_TOKEN` を必ず設定すること。** 1回の比較は実ブラウザと実IPを消費するため、無認証で誰でもジョブを積める状態は避ける。未設定で `0.0.0.0` 待受にすると起動時に警告が出る。
@@ -209,6 +240,7 @@ src/
   cli.ts                        CLI
 public/                      9. Web画面（ビルド不要の素のHTML/CSS/JS）
 scripts/launch-chrome.mjs   10. 市場ごとにChromeを起動（プロファイル・ポート・プロキシ別）
+scripts/share.mjs               サーバー＋Cloudflare Tunnelを起動し公開URLを表示
 ```
 
 Trip.com の仕様変更に備え、**生ペイロードを知っているのは `src/extract/roomList.ts` だけ**。ここはキー名の揺れ・入れ子の差異を吸収するため、固定パスではなくツリー走査で解釈する（`physicalRoomId` や `roomName` は親から継承）。壊れた場合もこのファイルだけを直せばよい。

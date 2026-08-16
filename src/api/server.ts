@@ -219,7 +219,7 @@ if (entryPoint === import.meta.url || process.env.START_SERVER === '1') {
         port,
         host,
         demoMode: Boolean(serverOptions.fixturesDir),
-        authRequired: Boolean(serverOptions.apiToken),
+        protected: Boolean(serverOptions.apiToken),
       }),
     )
     .catch((error: Error) => {
