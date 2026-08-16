@@ -1,0 +1,11 @@
+node_modules/
+dist/
+*.log
+.env
+.env.*
+!.env.example
+
+# Captured Trip.com responses used for debugging. Never commit real captures:
+# they can contain account-specific pricing and identifiers.
+captures/
+tests/fixtures/**/raw-*.json

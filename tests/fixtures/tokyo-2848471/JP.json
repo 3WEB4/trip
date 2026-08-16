@@ -1,0 +1,92 @@
+{
+  "ResponseStatus": { "Timestamp": "2026-08-16T02:11:04+09:00", "Ack": "Success" },
+  "hotelInfo": {
+    "hotelId": 2848471,
+    "hotelName": "Example Hotel Tokyo"
+  },
+  "roomList": [
+    {
+      "physicalRoomId": 430120748,
+      "roomName": "デラックスツインルーム",
+      "subRoomList": [
+        {
+          "roomId": 1599611286,
+          "roomCode": "Q72FXT-Z-1",
+          "roomName": "デラックスツインルーム 朝食なし",
+          "remainRoomQuantity": 3,
+          "availability": true,
+          "breakfastCount": 0,
+          "priceInfo": {
+            "currency": "JPY",
+            "price": 40245,
+            "tax": 4024,
+            "totalPrice": 44269,
+            "originalPrice": 48900,
+            "taxIncluded": true
+          },
+          "cancelPolicy": { "freeCancel": true, "cancelDesc": "2026年9月13日まで無料キャンセル可能" },
+          "paymentInfo": { "paymentType": "オンライン決済" }
+        },
+        {
+          "roomId": 1599611299,
+          "roomCode": "Q72FXT-B-1",
+          "roomName": "デラックスツインルーム 朝食付き",
+          "remainRoomQuantity": 2,
+          "availability": true,
+          "breakfastCount": 2,
+          "priceInfo": {
+            "currency": "JPY",
+            "price": 45690,
+            "tax": 4569,
+            "totalPrice": 50259,
+            "originalPrice": 55000,
+            "taxIncluded": true
+          },
+          "cancelPolicy": { "freeCancel": true, "cancelDesc": "2026年9月13日まで無料キャンセル可能" },
+          "paymentInfo": { "paymentType": "オンライン決済" }
+        }
+      ]
+    },
+    {
+      "physicalRoomId": 430120801,
+      "roomName": "スーペリアキングルーム",
+      "subRoomList": [
+        {
+          "roomId": 1599612044,
+          "roomCode": "K91LMP-Z-1",
+          "roomName": "スーペリアキングルーム 返金不可",
+          "remainRoomQuantity": 1,
+          "availability": true,
+          "breakfastCount": 0,
+          "priceInfo": {
+            "currency": "JPY",
+            "price": 38000,
+            "tax": 3800,
+            "totalPrice": 41800,
+            "originalPrice": 41800,
+            "taxIncluded": true
+          },
+          "cancelPolicy": { "freeCancel": false, "cancelDesc": "返金不可" },
+          "paymentInfo": { "paymentType": "オンライン決済" }
+        },
+        {
+          "roomId": 1599612077,
+          "roomCode": "JP-ONLY-1",
+          "roomName": "会員限定プラン",
+          "remainRoomQuantity": 0,
+          "availability": false,
+          "breakfastCount": 2,
+          "priceInfo": {
+            "currency": "JPY",
+            "price": 33000,
+            "tax": 3300,
+            "totalPrice": 36300,
+            "taxIncluded": true
+          },
+          "cancelPolicy": { "freeCancel": true, "cancelDesc": "無料キャンセル可能" },
+          "paymentInfo": { "paymentType": "現地払い" }
+        }
+      ]
+    }
+  ]
+}

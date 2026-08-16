@@ -1,0 +1,75 @@
+{
+  "ResponseStatus": { "Timestamp": "2026-08-15T19:11:22+02:00", "Ack": "Success" },
+  "hotelInfo": {
+    "hotelId": 2848471,
+    "hotelName": "Example Hotel Tokyo"
+  },
+  "roomList": [
+    {
+      "physicalRoomId": 430120748,
+      "roomName": "Deluxe Twinkamer",
+      "subRoomList": [
+        {
+          "roomId": 1599611286,
+          "roomCode": "Q72FXT-Z-1",
+          "roomName": "Deluxe Twinkamer zonder ontbijt",
+          "remainRoomQuantity": 3,
+          "availability": true,
+          "breakfastCount": 0,
+          "priceInfo": {
+            "currency": "JPY",
+            "price": 40682,
+            "tax": 4068,
+            "totalPrice": 44750,
+            "originalPrice": 48900,
+            "taxIncluded": true
+          },
+          "cancelPolicy": { "freeCancel": true, "cancelDesc": "Gratis annuleren tot 13 september 2026" },
+          "paymentInfo": { "paymentType": "Vooruitbetaling" }
+        },
+        {
+          "roomId": 1599611299,
+          "roomCode": "Q72FXT-B-1",
+          "roomName": "Deluxe Twinkamer met ontbijt",
+          "remainRoomQuantity": 2,
+          "availability": true,
+          "breakfastCount": 2,
+          "priceInfo": {
+            "currency": "JPY",
+            "price": 45200,
+            "tax": 4520,
+            "totalPrice": 49720,
+            "originalPrice": 55000,
+            "taxIncluded": true
+          },
+          "cancelPolicy": { "freeCancel": true, "cancelDesc": "Gratis annuleren tot 13 september 2026" },
+          "paymentInfo": { "paymentType": "Vooruitbetaling" }
+        }
+      ]
+    },
+    {
+      "physicalRoomId": 430120801,
+      "roomName": "Superior Kingkamer",
+      "subRoomList": [
+        {
+          "roomId": 1599612044,
+          "roomCode": "K91LMP-Z-1",
+          "roomName": "Superior Kingkamer niet-restitueerbaar",
+          "remainRoomQuantity": 1,
+          "availability": true,
+          "breakfastCount": 0,
+          "priceInfo": {
+            "currency": "JPY",
+            "price": 37500,
+            "tax": 3750,
+            "totalPrice": 41250,
+            "originalPrice": 41800,
+            "taxIncluded": true
+          },
+          "cancelPolicy": { "freeCancel": false, "cancelDesc": "Niet-restitueerbaar" },
+          "paymentInfo": { "paymentType": "Vooruitbetaling" }
+        }
+      ]
+    }
+  ]
+}
