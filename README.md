@@ -2,7 +2,7 @@
 
 Trip.com のホテルURLを渡すと、同一ホテル・同一日程・同一客室・同一プランの料金を複数市場（JP / NL / FR / …）から取得し、JPY換算で安い順に返す。
 
-Web画面・CLI・API の3つの入口があり、比較はジョブとして実行され進捗が見えます。DB と市場別IP（プロキシ）は未実装（[未実装](#未実装)参照）。
+Web画面・CLI・API の3つの入口があり、比較はジョブとして実行され進捗が見えます。市場ごとに別Chrome・別プロキシ（＝別の出口IP）を割り当てられます。DB保存は未実装（[未実装](#未実装)参照）。
 
 ## Web画面
 
@@ -49,18 +49,68 @@ npm run cli -- "https://www.trip.com/hotels/detail/?hotelId=2848471&roomId=15996
   --fixtures tests/fixtures/tokyo-2848471 --pretty
 ```
 
-## Chrome の準備（実データ取得時）
+## 本番で動かす（実データ取得）
 
 内部APIは直接叩かない。新規ヘッドレスChromeは HTTP 430 になるため、**通常のChromeを先に起動しておき、CDPで接続**する。Cookie と `phantom-token` はそのプロファイル側に残り、本ツールは読み書き・保存しない。
 
+手順は3つ。
+
 ```bash
-google-chrome --remote-debugging-port=9222 --user-data-dir="$HOME/.trip-chrome"
-# 一度 Trip.com を開いて通常の閲覧状態にしておく
-npm run cli -- "<URL>" --markets JP,NL          # 既定の接続先 http://127.0.0.1:9222
-npm run cli -- "<URL>" --cdp http://127.0.0.1:9333
+# 1. 市場ごとにChromeを起動（プロファイルもポートも別。ウィンドウは開いたまま）
+#    プロキシを使う場合は先に TRIP_MARKET_<CODE>_PROXY を設定しておく
+npm run chrome -- --markets JP,NL
+
+# 2. 起動時に表示された環境変数を設定し、準備できているか確認する
+export TRIP_MARKET_JP_CDP=http://127.0.0.1:9222
+export TRIP_MARKET_NL_CDP=http://127.0.0.1:9223
+npm run doctor -- --markets JP,NL --hotel 2848471
+
+# 3. 比較を実行
+npm run cli -- "<Trip.comのURL>" --markets JP,NL --pretty
+npm run api                                   # 画面から使う場合
 ```
 
-CAPTCHA や HTTP 430 は回避しない。`failures[].manualActionRequired: true` として返し、CLI は終了コード 3 を返す。`--keep-open` を付けるとページを開いたまま残すので、手動でCAPTCHAを解いてから再実行できる。
+`npm run doctor` は市場ごとに「Chromeに接続できるか」「どの国のIPから出ているか」「Trip.comが料金を返すか」を確認して、次のように表示する。**失敗の原因が実行前に分かる**ようにするためのコマンド。
+
+```
+JP  http://127.0.0.1:9222
+  ✓ chrome    Chrome 141.0.7390.37
+  ✓ exit IP   exit IP in JP
+  ✓ trip.com  room list received, 12 bookable offers
+
+NL  http://127.0.0.1:9223  via http://nl-exit.example:8000
+  ✓ chrome    Chrome 141.0.7390.37
+  ! exit IP   exit IP in JP, expected NL — prices will reflect JP, not NL
+  ✗ trip.com  http-430: Room-list request returned HTTP 430 for NL
+```
+
+CAPTCHA や HTTP 430 は回避しない。`failures[].manualActionRequired: true` として返し、CLI は終了コード 3 を返す。`--keep-open` を付けるとページを開いたまま残すので、起動したChromeのウィンドウで手動でCAPTCHAを解いてから再実行できる。
+
+### 市場別IP（プロキシ）
+
+「どの国からアクセスすると安いか」を主張するには、ホスト・locale・region に加えて**IPも市場ごとに変える**必要がある。プロキシは Chrome の起動時にしか渡せない（CDP接続後には付けられない）ため、市場ごとに別のChromeを起動する形にしてある。
+
+```bash
+export TRIP_MARKET_NL_PROXY=http://user:pass@nl-exit.example:8000
+export TRIP_MARKET_FR_PROXY=http://user:pass@fr-exit.example:8000
+npm run chrome -- --markets JP,NL,FR
+npm run doctor -- --markets JP,NL,FR      # 実際に別の国から出ているか確認
+```
+
+doctor は全市場が同じIPから出ている場合に警告する。プロキシ未設定のまま「NLの方が安い」と表示しても、それは**NLのIPから見た価格ではない**ため。認証情報はログにも画面にも出さず、ホストのみ表示する。
+
+設定はファイルでもよい（`TRIP_MARKETS_FILE=./markets.local.json`、`.gitignore` 済み）。
+
+```json
+{
+  "JP": { "cdpUrl": "http://127.0.0.1:9222", "expectedCountry": "JP" },
+  "NL": { "cdpUrl": "http://127.0.0.1:9223", "proxy": "http://user:pass@nl-exit.example:8000", "expectedCountry": "NL" }
+}
+```
+
+### 仕様変更が起きたとき
+
+`SAVE_CAPTURES=./captures`（CLIは `--save-captures ./captures`）で、生のレスポンスを市場・時刻ごとに保存できる。保存されるのはレスポンス本文のみで、Cookieやトークンは含まれない。`captures/` は `.gitignore` 済み。保存したファイルを `<MARKET>.json` にリネームすれば、`--fixtures` でそのまま再現・修正できる。
 
 ### CLI オプション
 
@@ -108,8 +158,17 @@ curl localhost:3000/api/jobs/<id>
 | `PORT` / `HOST` | 待受（既定 3000 / 0.0.0.0） |
 | `DEMO_FIXTURES` | 指定すると全比較を保存済みレスポンスで実行（デモ用） |
 | `ALLOW_CLIENT_FIXTURES` | `1` でリクエストの `fixturesDir` を許可。**公開サーバーでは有効にしないこと**（任意ディレクトリを読ませる指定になる） |
-| `CHROME_CDP_URL` | Chrome DevTools エンドポイント（既定 `http://127.0.0.1:9222`） |
+| `API_TOKEN` | 設定すると `/api/*` に `Authorization: Bearer <token>` を要求。画面は `?token=<値>` で一度開けば以降も動く |
+| `CHROME_CDP_URL` | 既定のChrome DevToolsエンドポイント（既定 `http://127.0.0.1:9222`） |
+| `TRIP_MARKET_<CODE>_CDP` | その市場専用のChrome |
+| `TRIP_MARKET_<CODE>_PROXY` | その市場のChromeに渡す `--proxy-server` |
+| `TRIP_MARKET_<CODE>_COUNTRY` | 期待する出口IPの国。doctor が照合する |
+| `TRIP_MARKETS_FILE` | 上記をまとめたJSONファイル（環境変数の方が優先） |
+| `SAVE_CAPTURES` | 生レスポンスの保存先ディレクトリ |
+| `IP_LOOKUP_URL` | 出口IP確認先（既定 `https://ipinfo.io/json`） |
 | `LOG_LEVEL` | `debug` / `info` / `warn` / `error` |
+
+**公開する場合は `API_TOKEN` を必ず設定すること。** 1回の比較は実ブラウザと実IPを消費するため、無認証で誰でもジョブを積める状態は避ける。未設定で `0.0.0.0` 待受にすると起動時に警告が出る。
 
 ## 構成
 
@@ -124,9 +183,12 @@ src/
   fx/rates.ts                8. 為替換算（ECB / 静的レート）
   compare/compareMarkets.ts  6. 取得・照合・換算・ランキング
   jobs/jobStore.ts           9. 比較ジョブ（直列実行・進捗・TTL）
+  markets/overrides.ts      10. 市場ごとのChrome・プロキシ設定（環境変数 / JSON）
+  doctor.ts                     実行前チェック（Chrome・出口IP・Trip.com疎通）
   api/server.ts                 Fastify API ＋ 画面配信
   cli.ts                        CLI
 public/                      9. Web画面（ビルド不要の素のHTML/CSS/JS）
+scripts/launch-chrome.mjs   10. 市場ごとにChromeを起動（プロファイル・ポート・プロキシ別）
 ```
 
 Trip.com の仕様変更に備え、**生ペイロードを知っているのは `src/extract/roomList.ts` だけ**。ここはキー名の揺れ・入れ子の差異を吸収するため、固定パスではなくツリー走査で解釈する（`physicalRoomId` や `roomName` は親から継承）。壊れた場合もこのファイルだけを直せばよい。
@@ -161,7 +223,7 @@ Trip.com の仕様変更に備え、**生ペイロードを知っているのは
 ## 開発
 
 ```bash
-npm test          # vitest（61件）
+npm test          # vitest（71件）
 npm run typecheck
 npm run build
 ```
@@ -172,12 +234,14 @@ npm run build
 
 実データ取得には**通常のChromeが動くVMまたはコンテナ**が必要です（設計どおり）。ヘッドレスでは430になるため、サーバーレスやビルドだけのホスティングでは動きません。最低限の構成は次のとおりです。
 
-1. VM上でプロファイル付きChromeを常駐（`--remote-debugging-port=9222`）
-2. 同じVMで `npm run build && npm start`
-3. リバースプロキシで公開（画面もAPIも同じポート）
-4. 比較は1件ずつ直列。同時利用者が増えるなら、市場ごとにVMを分けてIPも分離する
+1. VM上で `npm run chrome -- --markets JP,NL,...` を常駐（ウィンドウを閉じない。ヘッドレス不可）
+2. `npm run doctor -- --markets ... --hotel <id>` が全部 ✓ になることを確認
+3. 同じVMで `API_TOKEN=<値> npm run build && npm start`
+4. リバースプロキシで公開（画面もAPIも同じポート）
 
-公開前に、利用規約・提携条件・自動アクセスの可否・送客方法の確認が必要です。`ALLOW_CLIENT_FIXTURES` は無効のままにしてください。
+比較は1件ずつ直列に実行される。同時利用者が増える場合は、市場ごとにVMを分けてIPも分離する。
+
+公開前に、利用規約・提携条件・自動アクセスの可否・送客方法の確認が必要。`ALLOW_CLIENT_FIXTURES` は無効のままにすること。
 
 ## 未実装
 
@@ -185,6 +249,6 @@ npm run build
 | --- | --- |
 | PostgreSQL への結果保存 | 未着手。`ComparisonResult` をそのまま格納できる形にはなっている |
 | BullMQ + Redis | 未着手。`JobStore` を差し替えれば移行できる（複数プロセス化が必要になった時点で） |
-| 市場別IP（プロキシ） | `MarketConfig.proxy` の枠のみ用意。「どの国からアクセスすると安いか」を主張するにはここが必須 |
-| 会員価格・ログイン状態の扱い | 現状は接続先Chromeのプロファイル状態に依存する。比較時は全市場で同条件にすること |
-| 認証・レート制限 | 未着手。キュー上限（既定20件）のみ |
+| 会員価格・ログイン状態の扱い | 接続先Chromeのプロファイル状態に依存する。比較時は全市場で同条件（全部ログアウト、または全部ログイン）にすること |
+| レート制限 | `API_TOKEN` とキュー上限（既定20件）のみ。IP単位の制限は未実装 |
+| プロキシの死活監視 | doctor は実行時点の確認のみ。常時監視は未実装 |

@@ -43,6 +43,11 @@ type ComparisonRequest = z.infer<typeof requestSchema>;
 
 export interface ServerOptions {
   /**
+   * When set, every /api route requires `Authorization: Bearer <token>`.
+   * The screen and /health stay open so the page can still be loaded.
+   */
+  apiToken?: string;
+  /**
    * Forces every comparison to replay this fixture directory. Set
    * `DEMO_FIXTURES=<dir>` to run the UI without a browser.
    */
@@ -91,6 +96,18 @@ export function buildServer(options: ServerOptions = {}): FastifyInstance {
   );
 
   app.register(fastifyStatic, { root: PUBLIC_DIR, index: 'index.html' });
+
+  // A comparison spends a real browser and a real IP, so a public deployment
+  // should not let anonymous callers queue work.
+  if (options.apiToken) {
+    const expected = `Bearer ${options.apiToken}`;
+    app.addHook('onRequest', async (request, reply) => {
+      if (!request.url.startsWith('/api/')) return;
+      if (request.headers.authorization !== expected) {
+        return reply.status(401).send({ error: 'unauthorized' });
+      }
+    });
+  }
 
   app.get('/health', async () => ({ status: 'ok' }));
 
@@ -187,12 +204,24 @@ if (entryPoint === import.meta.url || process.env.START_SERVER === '1') {
   const host = process.env.HOST ?? '0.0.0.0';
   const serverOptions: ServerOptions = {
     ...(process.env.DEMO_FIXTURES ? { fixturesDir: process.env.DEMO_FIXTURES } : {}),
+    ...(process.env.API_TOKEN ? { apiToken: process.env.API_TOKEN } : {}),
     allowClientFixtures: process.env.ALLOW_CLIENT_FIXTURES === '1',
   };
 
+  if (!serverOptions.apiToken && host === '0.0.0.0') {
+    logger.warn('API_TOKEN is not set — anyone who can reach this port can queue comparisons');
+  }
+
   buildServer(serverOptions)
     .listen({ port, host })
-    .then(() => logger.info('api listening', { port, host, demoMode: Boolean(serverOptions.fixturesDir) }))
+    .then(() =>
+      logger.info('api listening', {
+        port,
+        host,
+        demoMode: Boolean(serverOptions.fixturesDir),
+        authRequired: Boolean(serverOptions.apiToken),
+      }),
+    )
     .catch((error: Error) => {
       logger.error('failed to start api', { message: error.message });
       process.exitCode = 1;

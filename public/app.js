@@ -6,6 +6,22 @@
  * as-is.
  */
 
+/**
+ * When the server runs with API_TOKEN set, the page needs to send it too.
+ * Take it from `?token=` once and keep it locally, so the URL can be shared
+ * without the token and a reload keeps working.
+ */
+const tokenFromUrl = new URLSearchParams(location.search).get('token');
+if (tokenFromUrl) {
+  localStorage.setItem('tripApiToken', tokenFromUrl);
+  history.replaceState(null, '', location.pathname);
+}
+
+function authHeaders() {
+  const token = localStorage.getItem('tripApiToken');
+  return token ? { authorization: `Bearer ${token}` } : {};
+}
+
 const form = document.getElementById('compare-form');
 const submitButton = document.getElementById('submit-button');
 const formError = document.getElementById('form-error');
@@ -64,7 +80,7 @@ function formatMoney(amount, currency) {
 }
 
 async function loadMarkets() {
-  const response = await fetch('/api/markets');
+  const response = await fetch('/api/markets', { headers: authHeaders() });
   const body = await response.json();
   demoBanner.hidden = !body.demoMode;
 
@@ -229,7 +245,7 @@ function renderResult(result) {
 
 async function pollJob(id) {
   for (;;) {
-    const response = await fetch(`/api/jobs/${id}`);
+    const response = await fetch(`/api/jobs/${id}`, { headers: authHeaders() });
     if (!response.ok) throw new Error('ジョブの状態を取得できませんでした。');
     const job = await response.json();
     renderProgress(job);
@@ -258,7 +274,7 @@ form.addEventListener('submit', async (event) => {
   try {
     const response = await fetch('/api/jobs', {
       method: 'POST',
-      headers: { 'content-type': 'application/json' },
+      headers: { 'content-type': 'application/json', ...authHeaders() },
       body: JSON.stringify({
         tripUrl: document.getElementById('trip-url').value,
         markets,
@@ -283,4 +299,6 @@ form.addEventListener('submit', async (event) => {
   }
 });
 
-loadMarkets().catch(() => showError('市場一覧を読み込めませんでした。サーバーの状態を確認してください。'));
+loadMarkets().catch(() =>
+  showError('市場一覧を読み込めませんでした。認証が有効な場合は ?token=<APIトークン> を付けて開いてください。'),
+);

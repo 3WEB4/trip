@@ -7,6 +7,7 @@
  */
 
 import type { MarketConfig, MarketCode, SearchCriteria } from '../types.js';
+import { applyOverride, loadOverrides, type MarketOverride } from './overrides.js';
 
 const DEFINITIONS: MarketConfig[] = [
   {
@@ -87,8 +88,19 @@ const BY_CODE = new Map(DEFINITIONS.map((market) => [market.code, market]));
 
 export const DEFAULT_MARKETS: MarketCode[] = ['JP', 'NL'];
 
+/**
+ * Deployment settings are read once at startup. Restart the process after
+ * changing them, rather than having a request see a half-applied config.
+ */
+let overrides: Record<string, MarketOverride> = loadOverrides();
+
+/** Re-reads the environment. Used by the tests and by the launcher script. */
+export function reloadOverrides(env: NodeJS.ProcessEnv = process.env): void {
+  overrides = loadOverrides(env);
+}
+
 export function listMarkets(): MarketConfig[] {
-  return DEFINITIONS.map((market) => ({ ...market }));
+  return DEFINITIONS.map((market) => applyOverride({ ...market }, overrides[market.code]));
 }
 
 export function getMarket(code: MarketCode): MarketConfig {
@@ -97,7 +109,7 @@ export function getMarket(code: MarketCode): MarketConfig {
     throw new Error(`Unknown market "${code}". Known markets: ${[...BY_CODE.keys()].join(', ')}`);
   }
   // Copy so per-run overrides (proxy, currency) never mutate the registry.
-  return { ...market };
+  return applyOverride({ ...market }, overrides[market.code]);
 }
 
 export function isKnownMarket(code: string): boolean {

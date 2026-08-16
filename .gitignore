@@ -9,3 +9,6 @@ dist/
 # they can contain account-specific pricing and identifiers.
 captures/
 tests/fixtures/**/raw-*.json
+
+# Deployment-specific market settings (Chrome endpoints, proxies).
+markets.local.json

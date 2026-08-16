@@ -12,21 +12,29 @@
  * read, logged or persisted by this code.
  */
 
+import { mkdir, writeFile } from 'node:fs/promises';
+import { join } from 'node:path';
 import { chromium, type Browser, type BrowserContext, type Page, type Response } from 'playwright-core';
 import { buildHotelDetailUrl } from '../markets/markets.js';
 import { extractHotelName, extractOffers, isRoomListUrl, sellableOffers } from '../extract/roomList.js';
-import type { MarketConfig, MarketSample, SearchCriteria } from '../types.js';
+import type { MarketCode, MarketConfig, MarketSample, SearchCriteria } from '../types.js';
 import { logger } from '../util/logger.js';
+import { describeProxy } from '../markets/overrides.js';
 import { redactUrl } from '../util/redact.js';
 import { MarketFetchError, type MarketFetcher } from './fetcher.js';
 
 export interface CdpFetcherOptions {
-  /** CDP endpoint of an already-running Chrome. */
+  /** CDP endpoint used by markets that do not name their own. */
   endpointUrl?: string;
   /** How long to wait for the room-list response, in ms. */
   responseTimeoutMs?: number;
   /** Keep the page open after capture, so a human can solve a CAPTCHA. */
   keepPageOpen?: boolean;
+  /**
+   * Write each raw room-list payload here as `<MARKET>-<timestamp>.json`.
+   * Response bodies only — no cookies, headers or tokens are written.
+   */
+  saveCapturesDir?: string;
 }
 
 /** Hotel names are only needed once; captured opportunistically. */
@@ -38,32 +46,65 @@ const BLOCKED_STATUSES = new Set([403, 429, 430, 451]);
 
 export class CdpMarketFetcher implements MarketFetcher {
   readonly name = 'chrome-cdp';
-  private browser: Browser | null = null;
-  private readonly endpointUrl: string;
+  /**
+   * One connection per endpoint. Markets that run behind different exit IPs
+   * each name their own Chrome, so several may be open at once.
+   */
+  private readonly browsers = new Map<string, Browser>();
+  private readonly defaultEndpoint: string;
   private readonly responseTimeoutMs: number;
   private readonly keepPageOpen: boolean;
+  private readonly saveCapturesDir: string | null;
   readonly meta: CapturedMeta = { hotelName: null };
 
   constructor(options: CdpFetcherOptions = {}) {
-    this.endpointUrl = options.endpointUrl ?? process.env.CHROME_CDP_URL ?? 'http://127.0.0.1:9222';
+    this.defaultEndpoint = options.endpointUrl ?? process.env.CHROME_CDP_URL ?? 'http://127.0.0.1:9222';
     this.responseTimeoutMs = options.responseTimeoutMs ?? 45_000;
     this.keepPageOpen = options.keepPageOpen ?? false;
+    this.saveCapturesDir = options.saveCapturesDir ?? process.env.SAVE_CAPTURES ?? null;
   }
 
-  private async connect(): Promise<Browser> {
-    if (this.browser?.isConnected()) return this.browser;
+  private endpointFor(market: MarketConfig): string {
+    return market.cdpUrl ?? this.defaultEndpoint;
+  }
+
+  private async connect(market: MarketConfig): Promise<Browser> {
+    const endpoint = this.endpointFor(market);
+    const existing = this.browsers.get(endpoint);
+    if (existing?.isConnected()) return existing;
+
     try {
-      this.browser = await chromium.connectOverCDP(this.endpointUrl);
+      const browser = await chromium.connectOverCDP(endpoint);
+      this.browsers.set(endpoint, browser);
+      logger.info('attached to chrome', {
+        market: market.code,
+        endpoint,
+        proxy: describeProxy(market.proxy),
+      });
+      return browser;
     } catch (error) {
       throw new MarketFetchError(
-        '-',
+        market.code,
         'cdp-unreachable',
-        `Could not attach to Chrome at ${this.endpointUrl}. Start Chrome with ` +
-          `--remote-debugging-port=9222 --user-data-dir=<profile>. (${(error as Error).message})`,
+        `Could not attach to Chrome at ${endpoint} for ${market.code}. ` +
+          'Start it with scripts/launch-chrome.mjs, or run `npm run doctor` to see which markets are ready. ' +
+          `(${(error as Error).message})`,
         true,
       );
     }
-    return this.browser;
+  }
+
+  /** Saves the raw payload so a payload change can be replayed as a fixture. */
+  private async saveCapture(market: MarketCode, payload: unknown): Promise<void> {
+    if (!this.saveCapturesDir) return;
+    try {
+      await mkdir(this.saveCapturesDir, { recursive: true });
+      const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+      await writeFile(join(this.saveCapturesDir, `${market}-${stamp}.json`), JSON.stringify(payload, null, 2), 'utf8');
+    } catch (error) {
+      // Never fail a comparison because debugging output could not be written.
+      logger.warn('could not save capture', { market, message: (error as Error).message });
+    }
   }
 
   /**
@@ -77,7 +118,7 @@ export class CdpMarketFetcher implements MarketFetcher {
   }
 
   async fetch(market: MarketConfig, criteria: SearchCriteria): Promise<MarketSample> {
-    const browser = await this.connect();
+    const browser = await this.connect(market);
     const context = await this.contextFor(browser);
     const page = await context.newPage();
 
@@ -171,6 +212,8 @@ export class CdpMarketFetcher implements MarketFetcher {
       this.meta.hotelName = extractHotelName(payload);
     }
 
+    await this.saveCapture(market.code, payload);
+
     const allOffers = extractOffers(payload, criteria);
     const offers = sellableOffers(allOffers, criteria.roomQuantity);
     logger.info('offers extracted', { market: market.code, total: allOffers.length, sellable: offers.length });
@@ -189,8 +232,10 @@ export class CdpMarketFetcher implements MarketFetcher {
   }
 
   async close(): Promise<void> {
-    // Only detach: the Chrome belongs to the operator, not to this process.
-    if (this.browser?.isConnected()) await this.browser.close().catch(() => undefined);
-    this.browser = null;
+    // Only detach: the Chromes belong to the operator, not to this process.
+    for (const browser of this.browsers.values()) {
+      if (browser.isConnected()) await browser.close().catch(() => undefined);
+    }
+    this.browsers.clear();
   }
 }

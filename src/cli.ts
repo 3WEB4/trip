@@ -22,6 +22,7 @@ interface CliArgs {
   delayMs: number;
   fixturesDir?: string;
   cdpUrl?: string;
+  saveCapturesDir?: string;
   keepPageOpen: boolean;
   logLevel: LogLevel;
   pretty: boolean;
@@ -41,14 +42,16 @@ Options:
   --delay <ms>         Pause between samples (default: 1500)
   --fixtures <dir>     Replay saved responses from <dir>/<MARKET>.json instead of Chrome
   --cdp <url>          Chrome DevTools endpoint (default: $CHROME_CDP_URL or http://127.0.0.1:9222)
+  --save-captures <d>  Write each raw room-list payload to <d>/<MARKET>-<time>.json
   --keep-open          Leave the market pages open (to solve a CAPTCHA by hand)
   --log-level <level>  debug | info | warn | error (default: info)
   --pretty             Indent the JSON output
   --list-markets       Print the known markets and exit
   -h, --help           Show this help
 
-Chrome must already be running with remote debugging enabled, e.g.
-  google-chrome --remote-debugging-port=9222 --user-data-dir="$HOME/.trip-chrome"
+Chrome must already be running with remote debugging enabled:
+  npm run chrome -- --markets JP,NL     (one Chrome per market, own profile/proxy)
+  npm run doctor -- --markets JP,NL     (check they are reachable and which IP they exit from)
 A freshly launched headless Chrome is rejected by Trip.com with HTTP 430.
 `.trimStart();
 
@@ -100,6 +103,9 @@ function parseArgs(argv: string[]): CliArgs {
       case '--cdp':
         args.cdpUrl = next();
         break;
+      case '--save-captures':
+        args.saveCapturesDir = next();
+        break;
       case '--keep-open':
         args.keepPageOpen = true;
         break;
@@ -150,6 +156,7 @@ async function main(): Promise<number> {
       ...(args.fixturesDir ? { fixturesDir: args.fixturesDir } : {}),
       cdp: {
         ...(args.cdpUrl ? { endpointUrl: args.cdpUrl } : {}),
+        ...(args.saveCapturesDir ? { saveCapturesDir: args.saveCapturesDir } : {}),
         keepPageOpen: args.keepPageOpen,
       },
     });

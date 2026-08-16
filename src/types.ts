@@ -23,10 +23,22 @@ export interface MarketConfig {
   /** `Accept-Language` / browser language for this market. */
   acceptLanguage: string;
   /**
-   * Optional proxy for IP-geolocation testing (MVP step 10).
-   * Format understood by Playwright: `http://user:pass@host:port`.
+   * CDP endpoint of the Chrome that serves this market. Defaults to the
+   * shared one. Point each market at its own Chrome when the Chromes sit
+   * behind different exit IPs.
+   */
+  cdpUrl?: string;
+  /**
+   * Exit proxy this market's Chrome is expected to be started with
+   * (`--proxy-server=...`), e.g. `http://user:pass@host:port`.
+   *
+   * A proxy cannot be attached over CDP after the fact — Chrome takes it at
+   * launch — so this value is what `scripts/launch-chrome.mjs` passes and what
+   * `npm run doctor` verifies the egress IP against.
    */
   proxy?: string;
+  /** Country the exit IP is expected to resolve to. Checked by the doctor. */
+  expectedCountry?: string;
 }
 
 /** Search conditions extracted from a Trip.com URL. */

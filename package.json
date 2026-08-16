@@ -17,7 +17,9 @@
     "test:watch": "vitest",
     "cli": "tsx src/cli.ts",
     "api": "tsx src/api/server.ts",
-    "start": "node dist/api/server.js"
+    "start": "node dist/api/server.js",
+    "doctor": "tsx src/doctor.ts",
+    "chrome": "node scripts/launch-chrome.mjs"
   },
   "dependencies": {
     "@fastify/static": "^8.3.0",
