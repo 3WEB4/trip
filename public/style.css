@@ -345,3 +345,136 @@ td a {
   color: var(--muted);
   font-size: 0.8rem;
 }
+
+/*
+ * Phones.
+ *
+ * Five nowrap columns cannot fit 390px, and a horizontally scrolling table
+ * hides the booking link — the one thing the user came for. Below 640px the
+ * same markup is re-laid-out as one card per market, each row labelled from
+ * the `data-label` the renderer sets.
+ */
+@media (max-width: 640px) {
+  body {
+    padding: 0 0.75rem 2.5rem;
+  }
+
+  .site-header {
+    padding: 1.75rem 0 1rem;
+  }
+
+  .card {
+    padding: 1rem;
+  }
+
+  /* iOS zooms the page when a focused input is under 16px. */
+  input[type='url'],
+  select {
+    font-size: 16px;
+  }
+
+  .table-card {
+    border: 0;
+    background: none;
+    padding: 0;
+  }
+
+  .table-scroll {
+    overflow-x: visible;
+  }
+
+  table,
+  tbody,
+  tr,
+  td {
+    display: block;
+    width: 100%;
+  }
+
+  thead {
+    display: none;
+  }
+
+  tr {
+    margin-bottom: 0.75rem;
+    padding: 0.9rem 1rem;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background: var(--surface);
+  }
+
+  tr.cheapest {
+    border-color: var(--good);
+  }
+
+  tr.cheapest td {
+    /* The whole card is already tinted by its border; keep cells readable. */
+    background: none;
+  }
+
+  td {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: 0.35rem 0;
+    border-bottom: 0;
+    white-space: normal;
+    text-align: right;
+  }
+
+  td[data-label]::before {
+    content: attr(data-label);
+    flex: 0 0 auto;
+    color: var(--muted);
+    font-size: 0.8rem;
+    text-align: left;
+  }
+
+  td.market-header-cell {
+    justify-content: flex-start;
+    padding-bottom: 0.6rem;
+    margin-bottom: 0.4rem;
+    border-bottom: 1px solid var(--border);
+    font-size: 1.05rem;
+  }
+
+  td.numeric {
+    font-size: 1.05rem;
+    font-weight: 600;
+  }
+
+  td.conditions {
+    text-align: right;
+  }
+
+  td.booking-cell {
+    justify-content: stretch;
+    padding-top: 0.7rem;
+  }
+
+  td.booking-cell a {
+    display: block;
+    width: 100%;
+    padding: 0.6rem;
+    border: 1px solid var(--accent);
+    border-radius: 8px;
+    text-align: center;
+    text-decoration: none;
+    font-weight: 600;
+  }
+
+  .notes {
+    padding: 0 0.25rem;
+  }
+
+  .market-toggle {
+    /* Comfortable tap target. */
+    padding: 0.55rem 0.8rem;
+  }
+
+  button.primary {
+    width: 100%;
+    padding: 0.8rem;
+  }
+}

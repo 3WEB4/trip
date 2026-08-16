@@ -174,6 +174,7 @@ function renderResult(result) {
     if (index === 0) row.className = 'cheapest';
 
     const marketCell = document.createElement('td');
+    marketCell.className = 'market-header-cell';
     const marketWrap = document.createElement('div');
     marketWrap.className = 'market-cell';
     const marketName = document.createElement('strong');
@@ -189,6 +190,7 @@ function renderResult(result) {
 
     const priceCell = document.createElement('td');
     priceCell.className = 'numeric';
+    priceCell.dataset.label = '料金';
     priceCell.textContent = formatMoney(price.convertedPrice, price.targetCurrency);
     if (price.currency !== price.targetCurrency) {
       const original = document.createElement('div');
@@ -199,6 +201,7 @@ function renderResult(result) {
 
     const deltaCell = document.createElement('td');
     deltaCell.className = 'numeric';
+    deltaCell.dataset.label = '日本との差';
     if (baseline && price.market !== 'JP') {
       const delta = price.convertedPrice - baseline.convertedPrice;
       deltaCell.textContent = `${delta > 0 ? '+' : ''}${formatMoney(delta, price.targetCurrency)}`;
@@ -209,9 +212,11 @@ function renderResult(result) {
 
     const conditionCell = document.createElement('td');
     conditionCell.className = 'conditions';
+    conditionCell.dataset.label = '条件';
     conditionCell.textContent = conditionsText(price);
 
     const linkCell = document.createElement('td');
+    linkCell.className = 'booking-cell';
     const link = document.createElement('a');
     link.href = price.bookingUrl;
     link.target = '_blank';
