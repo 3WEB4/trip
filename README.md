@@ -2,9 +2,24 @@
 
 Trip.com のホテルURLを渡すと、同一ホテル・同一日程・同一客室・同一プランの料金を複数市場（JP / NL / FR / …）から取得し、JPY換算で安い順に返す。
 
-現状は設計どおり **CLI と API まで**。Web画面・ジョブキュー・DB・市場別IP（プロキシ）はまだ入っていない（[未実装](#未実装mvp-9-10-以降)参照）。
+Web画面・CLI・API の3つの入口があり、比較はジョブとして実行され進捗が見えます。DB と市場別IP（プロキシ）は未実装（[未実装](#未実装)参照）。
 
-## できること
+## Web画面
+
+```bash
+npm install
+npm run api                 # http://localhost:3000
+```
+
+URLを貼って市場を選ぶと、進捗を表示しながら比較し、安い順の表と各市場のTrip.comへの遷移リンクを出します。ブラウザを用意せず画面だけ確認する場合は、保存済みレスポンスで起動できます。
+
+```bash
+DEMO_FIXTURES=tests/fixtures/tokyo-2848471 npm run api
+```
+
+この場合は画面に「デモモード」と明示され、実売価格ではないことが分かるようになっています。
+
+## CLI
 
 ```bash
 npm install
@@ -65,19 +80,36 @@ CAPTCHA や HTTP 430 は回避しない。`failures[].manualActionRequired: true
 
 ## API
 
-```bash
-npm run api          # PORT=3000
 ```
-
-```
-POST /api/hotel-price-comparisons
-{ "tripUrl": "...", "markets": ["JP","NL"], "targetCurrency": "JPY", "samples": 1 }
-
-GET  /api/markets
+GET  /                              比較画面
+POST /api/jobs                      比較をキューへ投入 → 202 とジョブID
+GET  /api/jobs/:id                  状態・進捗・結果
+GET  /api/jobs                      直近のジョブ
+POST /api/hotel-price-comparisons   同期実行（curl・スクリプト向け）
+GET  /api/markets                   市場一覧（demoMode フラグ付き）
 GET  /health
 ```
 
-比較は同期実行で、ブラウザが1つの共有資源のため**同時実行は1件に直列化**している。エラーは `400 invalid_request / invalid_trip_url / unknown_market`、`502 no_comparable_offer`、`500 comparison_failed`。
+```bash
+curl -X POST localhost:3000/api/jobs -H 'content-type: application/json' \
+  -d '{"tripUrl":"https://jp.trip.com/hotels/detail/?hotelId=2848471","markets":["JP","NL"]}'
+# → {"id":"...","state":"queued","progress":{...}}
+curl localhost:3000/api/jobs/<id>
+```
+
+比較は**常に1件ずつ直列実行**します。接続先Chromeが単一の共有資源であり、同一IPから複数の市場ページを並行して開くこと自体がブロックの原因になるためです。待ち行列が溢れた場合は `429 queue_full`。その他のエラーは `400 invalid_request / invalid_trip_url / unknown_market`、`502 no_comparable_offer`、`500 comparison_failed`。
+
+ジョブは**インメモリ**で、既定30分で破棄されます。永続化が必要になった時点で `JobStore`（`create` / `get` / `list` の3メソッド）を BullMQ + Redis 実装に差し替えれば、ルート側は変更不要です。
+
+### 環境変数
+
+| 変数 | 内容 |
+| --- | --- |
+| `PORT` / `HOST` | 待受（既定 3000 / 0.0.0.0） |
+| `DEMO_FIXTURES` | 指定すると全比較を保存済みレスポンスで実行（デモ用） |
+| `ALLOW_CLIENT_FIXTURES` | `1` でリクエストの `fixturesDir` を許可。**公開サーバーでは有効にしないこと**（任意ディレクトリを読ませる指定になる） |
+| `CHROME_CDP_URL` | Chrome DevTools エンドポイント（既定 `http://127.0.0.1:9222`） |
+| `LOG_LEVEL` | `debug` / `info` / `warn` / `error` |
 
 ## 構成
 
@@ -91,8 +123,10 @@ src/
   match/matchOffers.ts       5. 同一商品の照合
   fx/rates.ts                8. 為替換算（ECB / 静的レート）
   compare/compareMarkets.ts  6. 取得・照合・換算・ランキング
-  api/server.ts                 Fastify API
+  jobs/jobStore.ts           9. 比較ジョブ（直列実行・進捗・TTL）
+  api/server.ts                 Fastify API ＋ 画面配信
   cli.ts                        CLI
+public/                      9. Web画面（ビルド不要の素のHTML/CSS/JS）
 ```
 
 Trip.com の仕様変更に備え、**生ペイロードを知っているのは `src/extract/roomList.ts` だけ**。ここはキー名の揺れ・入れ子の差異を吸収するため、固定パスではなくツリー走査で解釈する（`physicalRoomId` や `roomName` は親から継承）。壊れた場合もこのファイルだけを直せばよい。
@@ -127,18 +161,30 @@ Trip.com の仕様変更に備え、**生ペイロードを知っているのは
 ## 開発
 
 ```bash
-npm test          # vitest（49件）
+npm test          # vitest（61件）
 npm run typecheck
 npm run build
 ```
 
-テストは保存済みレスポンス（`tests/fixtures/tokyo-2848471/`）で URL解析 → 抽出 → 照合 → 換算 → ランキングまで通しで検証しており、ブラウザもネットワークも不要。実データで挙動が変わったときは、そのレスポンスを `<MARKET>.json` として保存すれば同じ経路で再現できる。
+テストは保存済みレスポンス（`tests/fixtures/tokyo-2848471/`）で URL解析 → 抽出 → 照合 → 換算 → ランキング → ジョブAPI → 画面配信まで通しで検証しており、ブラウザもネットワークも不要。実データで挙動が変わったときは、そのレスポンスを `<MARKET>.json` として保存すれば同じ経路で再現できる。
 
-## 未実装（MVP 9-10 以降）
+## 公開して運用する場合
+
+実データ取得には**通常のChromeが動くVMまたはコンテナ**が必要です（設計どおり）。ヘッドレスでは430になるため、サーバーレスやビルドだけのホスティングでは動きません。最低限の構成は次のとおりです。
+
+1. VM上でプロファイル付きChromeを常駐（`--remote-debugging-port=9222`）
+2. 同じVMで `npm run build && npm start`
+3. リバースプロキシで公開（画面もAPIも同じポート）
+4. 比較は1件ずつ直列。同時利用者が増えるなら、市場ごとにVMを分けてIPも分離する
+
+公開前に、利用規約・提携条件・自動アクセスの可否・送客方法の確認が必要です。`ALLOW_CLIENT_FIXTURES` は無効のままにしてください。
+
+## 未実装
 
 | 項目 | 状況 |
 | --- | --- |
-| Web画面・ジョブ進捗表示 | 未着手。`runComparison()` を BullMQ ジョブから呼ぶ想定 |
-| BullMQ + Redis / PostgreSQL | 未着手。`compareMarkets()` の前段に置く（結果保存は `ComparisonResult` をそのまま格納できる形） |
+| PostgreSQL への結果保存 | 未着手。`ComparisonResult` をそのまま格納できる形にはなっている |
+| BullMQ + Redis | 未着手。`JobStore` を差し替えれば移行できる（複数プロセス化が必要になった時点で） |
 | 市場別IP（プロキシ） | `MarketConfig.proxy` の枠のみ用意。「どの国からアクセスすると安いか」を主張するにはここが必須 |
 | 会員価格・ログイン状態の扱い | 現状は接続先Chromeのプロファイル状態に依存する。比較時は全市場で同条件にすること |
+| 認証・レート制限 | 未着手。キュー上限（既定20件）のみ |

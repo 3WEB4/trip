@@ -131,6 +131,8 @@ export interface MarketPrice {
   sampleCount: number;
   /** ISO timestamps of every sample that fed this price. */
   capturedAt: string[];
+  /** Deep link to this exact plan on this market's Trip.com storefront. */
+  bookingUrl: string;
 }
 
 export interface ComparisonResult {

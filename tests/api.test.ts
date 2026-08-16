@@ -6,7 +6,8 @@ const FIXTURES = join(import.meta.dirname, 'fixtures', 'tokyo-2848471');
 const DETAIL_URL =
   'https://www.trip.com/hotels/detail/?hotelId=2848471&checkIn=2026-09-15&checkOut=2026-09-16&adult=2&crn=1';
 
-const app = buildServer();
+// Client-chosen fixture directories are off by default; the tests opt in.
+const app = buildServer({ allowClientFixtures: true });
 afterAll(() => app.close());
 
 describe('POST /api/hotel-price-comparisons', () => {

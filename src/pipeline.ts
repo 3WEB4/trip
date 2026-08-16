@@ -5,7 +5,7 @@
 import { CdpMarketFetcher, type CdpFetcherOptions } from './browser/cdpFetcher.js';
 import type { MarketFetcher } from './browser/fetcher.js';
 import { FixtureMarketFetcher } from './browser/fixtureFetcher.js';
-import { compareMarkets, type CompareOutcome } from './compare/compareMarkets.js';
+import { compareMarkets, type CompareOutcome, type ProgressEvent } from './compare/compareMarkets.js';
 import { FrankfurterRateProvider, StaticRateProvider, type RateProvider } from './fx/rates.js';
 import { DEFAULT_MARKETS, getMarket } from './markets/markets.js';
 import { parseTripUrl } from './url/parseTripUrl.js';
@@ -24,6 +24,8 @@ export interface RunOptions {
   rateProvider?: RateProvider;
   /** Overrides parsed criteria — used when the caller already has them. */
   criteria?: SearchCriteria;
+  /** Progress callback, for job status reporting. */
+  onProgress?: (event: ProgressEvent) => void;
 }
 
 function buildFetcher(options: RunOptions): MarketFetcher & { meta: { hotelName: string | null } } {
@@ -45,6 +47,7 @@ export async function runComparison(tripUrl: string, options: RunOptions = {}): 
       delayMs: options.delayMs ?? 1_500,
       rateProvider: options.rateProvider ?? new FrankfurterRateProvider(new StaticRateProvider()),
       baselineMarket: options.baselineMarket ?? 'JP',
+      ...(options.onProgress ? { onProgress: options.onProgress } : {}),
     });
     if (result.hotel.name === null) result.hotel.name = fetcher.meta.hotelName;
     return result;

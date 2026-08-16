@@ -5,7 +5,7 @@
 import type { MarketFetcher } from '../browser/fetcher.js';
 import { MarketFetchError } from '../browser/fetcher.js';
 import { convert, roundForCurrency, StaticRateProvider, type RateProvider } from '../fx/rates.js';
-import { getMarket } from '../markets/markets.js';
+import { buildHotelDetailUrl, getMarket } from '../markets/markets.js';
 import { compareOffers, matchAcrossMarkets, type OfferMatch } from '../match/matchOffers.js';
 import type {
   ComparisonResult,
@@ -18,6 +18,17 @@ import type {
 } from '../types.js';
 import { logger } from '../util/logger.js';
 import { median } from '../util/stats.js';
+
+/**
+ * Emitted while a comparison runs, so a UI can show which market is being
+ * scraped instead of a spinner with no information.
+ */
+export type ProgressEvent =
+  | { type: 'market-start'; market: MarketCode; sample: number; totalSamples: number }
+  | { type: 'market-done'; market: MarketCode; offers: number }
+  | { type: 'market-failed'; market: MarketCode; reason: string; manualActionRequired: boolean }
+  | { type: 'matching' }
+  | { type: 'converting' };
 
 export interface CompareOptions {
   markets: MarketCode[];
@@ -33,6 +44,8 @@ export interface CompareOptions {
   anchorMarket?: MarketCode;
   /** Hotel name, when the caller already knows it. */
   hotelName?: string | null;
+  /** Progress callback. Errors thrown by it are ignored. */
+  onProgress?: (event: ProgressEvent) => void;
 }
 
 const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
@@ -53,6 +66,7 @@ async function buildMarketPrice(
   market: MarketCode,
   matchedOffer: RoomOffer,
   rounds: MarketSample[],
+  criteria: SearchCriteria,
   targetCurrency: string,
   rateProvider: RateProvider,
 ): Promise<MarketPrice | null> {
@@ -90,6 +104,11 @@ async function buildMarketPrice(
     taxIncluded: matchedOffer.taxIncluded,
     sampleCount: prices.length,
     capturedAt,
+    bookingUrl: buildHotelDetailUrl(
+      getMarket(market),
+      { ...criteria, currency: targetCurrency },
+      matchedOffer.roomId,
+    ),
   };
 }
 
@@ -112,14 +131,26 @@ export async function compareMarkets(
   const roundsByMarket = new Map<MarketCode, MarketSample[]>();
   const failures: MarketFailure[] = [];
 
+  // Progress is advisory only; a broken listener must not fail a comparison.
+  const report = (event: ProgressEvent): void => {
+    try {
+      options.onProgress?.(event);
+    } catch {
+      // ignored on purpose
+    }
+  };
+
   for (const code of options.markets) {
     const market = getMarket(code);
     const rounds: MarketSample[] = [];
     let lastFailure: MarketFailure | null = null;
 
     for (let round = 0; round < sampleCount; round += 1) {
+      report({ type: 'market-start', market: market.code, sample: round + 1, totalSamples: sampleCount });
       try {
-        rounds.push(await fetcher.fetch(market, { ...criteria, currency: targetCurrency }));
+        const sample = await fetcher.fetch(market, { ...criteria, currency: targetCurrency });
+        rounds.push(sample);
+        report({ type: 'market-done', market: market.code, offers: sample.offers.length });
       } catch (error) {
         lastFailure =
           error instanceof MarketFetchError
@@ -136,6 +167,12 @@ export async function compareMarkets(
                 manualActionRequired: false,
               };
         logger.warn('market sample failed', { ...lastFailure });
+        report({
+          type: 'market-failed',
+          market: market.code,
+          reason: lastFailure.reason,
+          manualActionRequired: lastFailure.manualActionRequired,
+        });
       }
       if (round < sampleCount - 1) await sleep(delayMs);
     }
@@ -155,6 +192,7 @@ export async function compareMarkets(
     }
   }
 
+  report({ type: 'matching' });
   const representative = [...roundsByMarket.entries()].map(([, rounds]) => rounds[rounds.length - 1]!);
   const matchOptions: { anchorMarket?: MarketCode; preferRoomId?: number } = {
     anchorMarket: options.anchorMarket ?? (roundsByMarket.has(baseline) ? baseline : undefined),
@@ -186,12 +224,13 @@ export async function compareMarkets(
     };
   }
 
+  report({ type: 'converting' });
   const prices: MarketPrice[] = [];
   const unmatched = [...match.unmatchedMarkets];
 
   for (const [market, offer] of match.offers) {
     const rounds = roundsByMarket.get(market) ?? [];
-    const price = await buildMarketPrice(market, offer, rounds, targetCurrency, rateProvider);
+    const price = await buildMarketPrice(market, offer, rounds, criteria, targetCurrency, rateProvider);
     if (price) prices.push(price);
     else unmatched.push(market);
   }

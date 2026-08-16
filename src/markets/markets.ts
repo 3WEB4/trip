@@ -104,8 +104,15 @@ export function isKnownMarket(code: string): boolean {
   return BY_CODE.has(code.toUpperCase());
 }
 
-/** Builds the storefront hotel-detail URL that makes the page fire the room-list call. */
-export function buildHotelDetailUrl(market: MarketConfig, criteria: SearchCriteria): string {
+/**
+ * Builds the storefront hotel-detail URL.
+ *
+ * Used for two things: the page the worker opens to make Trip.com fire the
+ * room-list call, and the "book in this market" link handed to the user.
+ * `roomId` overrides the one in the criteria so the link can point at the
+ * exact plan that was compared.
+ */
+export function buildHotelDetailUrl(market: MarketConfig, criteria: SearchCriteria, roomId?: number | null): string {
   const url = new URL('/hotels/detail/', market.origin);
   url.searchParams.set('hotelId', String(criteria.hotelId));
   url.searchParams.set('checkIn', criteria.checkIn);
@@ -118,5 +125,7 @@ export function buildHotelDetailUrl(market: MarketConfig, criteria: SearchCriter
   url.searchParams.set('crn', String(criteria.roomQuantity));
   url.searchParams.set('locale', market.locale);
   url.searchParams.set('curr', criteria.currency);
+  const targetRoomId = roomId ?? criteria.roomId;
+  if (targetRoomId) url.searchParams.set('roomId', String(targetRoomId));
   return url.toString();
 }
